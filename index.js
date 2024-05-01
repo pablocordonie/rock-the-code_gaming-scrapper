@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 const { default: puppeteer } = require('puppeteer');
 
-const instantGamingProducts = [];
+const nintendoGamingProducts = [];
 
 const gamingProductsSchema = new Schema({
     title: { type: String, required: true },
@@ -28,34 +28,34 @@ const connectDB = async () => {
 };
 
 const dataCollector = async (page, browser) => {
-    let arrayDivs = await page.$$(".force-badge");
+    let productsContainers = await page.$$('.force-badge');
 
-    for (let gameDiv of arrayDivs) {
-        let title = await gameDiv.$eval(".title", (el) => el.innerText);
-        let img = await gameDiv.$eval("img", (el) => el.src);
+    for (let productContainer of productsContainers) {
+        let title = await productContainer.$eval('.title', (el) => el.innerText);
+        let img = await productContainer.$eval('img', (el) => el.src);
         let price;
 
         try {
-            price = await gameDiv.$eval(".price", (el) => Number(el.innerText.slice(0, el.innerText.length - 1)));
+            price = await productContainer.$eval('.price', (el) => Number(el.innerText.slice(0, el.innerText.length - 1)));
 
             const game = {
                 title,
                 img,
                 price
             };
-            instantGamingProducts.push(game);
+            nintendoGamingProducts.push(game);
         } catch (error) {
             const game = {
                 title,
                 img,
                 stock: 'Not Available'
             };
-            instantGamingProducts.push(game);
+            nintendoGamingProducts.push(game);
         }
     };
 
     try {
-        await page.$eval("[title='Next']", (el) => el.click());
+        await page.$eval('.arrow.right', (el) => el.click());
         await page.waitForNavigation();
         dataCollector(page, browser);
     } catch (error) {
@@ -68,11 +68,21 @@ const dataCollector = async (page, browser) => {
                 console.log(`The games collection's been dropped`);
             }
         }).catch(error => console.log(`Error deleting the games collection: ${error}`)).then(async () => {
-            const gamingProductsData = instantGamingProducts.map(product => new Product(product));
-            await Product.insertMany(gamingProductsData);
-            console.log('All the gaming products have been successfully saved in the DB: ', instantGamingProducts);
+            const nintendoProductsData = nintendoGamingProducts.map(product => new Product(product));
+            await Product.insertMany(nintendoProductsData);
+            console.log('All the gaming products have been successfully saved in the DB: ', nintendoProductsData);
         }).catch(error => console.error('An error has happened while saving the gaming products to the database: ', error));
     }
+};
+
+const searchNintendoProducts = async (page) => {
+    await page.waitForSelector('footer');
+
+    await page.$eval('#nav-nintendo a.access.mimic', (el) => el.click());
+    await page.waitForSelector('#nav-nintendo-panel');
+    await page.$eval('#nav-nintendo-panel .platforms a', (el) => el.click());
+
+    await page.waitForNavigation();
 };
 
 const gamingProductsScrapper = async (url) => {
@@ -88,14 +98,14 @@ const gamingProductsScrapper = async (url) => {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'load' });
 
-    await page.waitForSelector('div.actions .main button.button.button-secondary');
-    await page.$eval('div.actions .main button.button.button-secondary:last-of-type', (el) => el.click());
+    try {
+        await page.waitForSelector('div.actions .main button.button.button-secondary');
+        await page.$eval('div.actions .main button.button.button-secondary:last-of-type', (el) => el.click());
 
-    await page.$eval('#nav-nintendo a.access.mimic', (el) => el.click());
-    await page.waitForSelector('#nav-nintendo-panel');
-    await page.$eval('#nav-nintendo-panel .platforms a', (el) => el.click());
-
-    await page.waitForSelector('footer');
+        await searchNintendoProducts(page);
+    } catch (error) {
+        await searchNintendoProducts(page);
+    }
 
     dataCollector(page, browser);
 };
